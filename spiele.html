@@ -317,16 +317,21 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .fp-hint { text-align: center; font-size: 12px; color: #bbb; margin-top: 10px; }
 
 /* 4 Gewinnt */
-.vg-wrap { background: #1a1a2e; border-radius: 12px; padding: 10px; margin-bottom: 2px; }
-.vg-board { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; margin-bottom: 6px; }
+.vg-wrap { background: #1a1a2e; border-radius: 12px; padding: 7px; margin-bottom: 2px; max-width: 380px; }
+.vg-board { display: grid; grid-template-columns: repeat(9, 1fr); gap: 3px; margin-bottom: 5px; }
 .vg-cell { aspect-ratio: 1; border-radius: 50%; background: rgba(255,255,255,0.1); }
 .vg-cell.t1 { background: #2980d9; }
 .vg-cell.t2 { background: #e74c3c; }
 .vg-cell.win-cell { background: #f1c40f; box-shadow: 0 0 0 2px #f39c12; }
-.vg-col-btns { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; }
-.vg-col-btn { aspect-ratio: 1; border-radius: 7px; border: none; background: rgba(255,255,255,0.18); color: #fff; font-size: 14px; font-weight: 700; cursor: pointer; }
+.vg-cell.threat { box-shadow: 0 0 0 2px #f39c12; }
+.vg-col-btns { display: grid; grid-template-columns: repeat(9, 1fr); gap: 3px; }
+.vg-col-btn { aspect-ratio: 1; border-radius: 6px; border: none; background: rgba(255,255,255,0.18); color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; }
 .vg-col-btn:active { background: rgba(255,255,255,0.4); transform: scale(0.88); }
 .vg-col-btn:disabled { opacity: 0.22; pointer-events: none; }
+.vg-col-btn.threat-col { background: rgba(243,156,18,0.55); }
+.vg-threat-banner { font-size: 13px; font-weight: 700; padding: 8px 12px; border-radius: 8px; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+.vg-threat-banner.t1 { background: #fff3cd; color: #856404; border: 1.5px solid #ffc107; }
+.vg-threat-banner.t2 { background: #fff3cd; color: #856404; border: 1.5px solid #ffc107; }
 .vg-pumpe-row { margin: 8px 0 0; }
 .vg-pumpe-btn { width: 100%; padding: 11px; border-radius: 9px; border: 1.5px solid #e0a0a0; background: #fff8f8; color: #c0392b; font-size: 14px; font-weight: 600; cursor: pointer; }
 .vg-pumpe-btn:active { background: #fde8e8; }
@@ -1397,6 +1402,21 @@ function renderVierGewinntCard() {
   const ctName = vg.currentTeam===0 ? n1 : n2;
   const ctCls  = vg.currentTeam===0 ? 't1' : 't2';
 
+  // Win-threat detection: find winning cols for current and opponent team
+  const curWinCols = vg.winner===null ? vgFindWinningCols(vg.board, vg.currentTeam) : [];
+  const oppTeam    = vg.currentTeam===0 ? 1 : 0;
+  const oppWinCols = vg.winner===null ? vgFindWinningCols(vg.board, oppTeam) : [];
+  const threatColSet = new Set([...curWinCols, ...oppWinCols]);
+
+  // Rebuild col buttons with threat highlight
+  let colBtnsFinal = '';
+  for (let col=0; col<9; col++) {
+    const full = vg.board[col].every(c => c!==null);
+    const dis  = full || vg.winner!==null;
+    const isThreat = threatColSet.has(col);
+    colBtnsFinal += '<button class="vg-col-btn'+(isThreat?' threat-col':'')+'"'+(dis?' disabled':'')+' onclick="vgDrop('+col+')">'+(col+1)+'</button>';
+  }
+
   let statusHtml = '';
   if (vg.winner===null && aktiv.length>=2) {
     statusHtml = '<div class="vg-turn-badge '+ctCls+'">🎳 '+esc(ctName)+' ist dran</div>';
@@ -1405,6 +1425,21 @@ function renderVierGewinntCard() {
   } else if (vg.winner!==null) {
     const wn = vg.winner===0 ? n1 : n2;
     statusHtml = '<div class="vg-winner-banner">🏆 '+esc(wn)+' gewinnt!</div>';
+  }
+
+  // Threat banners
+  let threatHtml = '';
+  if (vg.winner===null) {
+    if (curWinCols.length) {
+      const cols = curWinCols.map(c=>c+1).join(', ');
+      threatHtml += `<div class="vg-threat-banner ${ctCls}">⚠️ ${esc(ctName)} kann mit Spalte ${cols} gewinnen!</div>`;
+    }
+    if (oppWinCols.length) {
+      const oppName = oppTeam===0 ? n1 : n2;
+      const oppCls  = oppTeam===0 ? 't1' : 't2';
+      const cols = oppWinCols.map(c=>c+1).join(', ');
+      threatHtml += `<div class="vg-threat-banner ${oppCls}">🛡️ ${esc(oppName)} droht Spalte ${cols} — blockieren!</div>`;
+    }
   }
 
   const pumpeBtn = vg.winner===null ? '<div class="vg-pumpe-row"><button class="vg-pumpe-btn" onclick="vgPumpe()">💨 Pumpe — keine Münze, nächstes Team</button></div>' : '';
@@ -1435,9 +1470,10 @@ function renderVierGewinntCard() {
         <button class="btn" style="flex:1;" onclick="vgRandomTeams()">🎲 Zufällig aufteilen</button>
       </div>
       ${statusHtml}
+      ${threatHtml}
       <div class="vg-wrap">
         <div class="vg-board">${boardCells}</div>
-        <div class="vg-col-btns">${colBtns}</div>
+        <div class="vg-col-btns">${colBtnsFinal}</div>
       </div>
       ${pumpeBtn}
       <div class="spiel-actions" style="margin-top:12px;">
@@ -1467,6 +1503,23 @@ function vgRandomTeams() {
   vg.team1 = sh.filter((_,i)=>i%2===0);
   vg.team2 = sh.filter((_,i)=>i%2===1);
   renderSpiele();
+}
+
+// Returns array of column indices where dropping gives 'team' a win
+function vgFindWinningCols(board, team) {
+  const winning = [];
+  for (let col = 0; col < 9; col++) {
+    // Find where the piece would land
+    let dropRow = -1;
+    for (let r = 0; r < 9; r++) { if (board[col][r] === null) { dropRow = r; break; } }
+    if (dropRow === -1) continue; // column full
+    // Simulate drop
+    board[col][dropRow] = team;
+    const wc = vgCheckWin(board, col, dropRow, team);
+    board[col][dropRow] = null; // undo
+    if (wc) winning.push(col);
+  }
+  return winning;
 }
 
 function vgCheckWin(board, lc, lr, team) {
